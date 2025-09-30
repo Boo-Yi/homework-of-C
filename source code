@@ -1,0 +1,283 @@
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_NON_CONFORMING_TMPNAM
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include <stdbool.h>
+
+//定义后续需要用到的基础数组及结构体等
+const char* TianGan[] = { "甲","乙","丙","丁","戊","己","庚","辛","壬","癸" };
+const char* DiZhi[] = {"子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"};
+char GanZhi[60][5];
+typedef struct {
+	int LunarYear;//农历的年份
+	int SolarFirstDay[3];//正月初一所在的公历日期
+	int LeapMonth;//闰月所在月（0表示无闰月）
+	int Days[13];// 每个农历月的天数（1为30天，0为29天，12平月+闰月）
+}LunarData;
+LunarData lunardatas[] = {
+	{2025,{2025,1,29},6,{1,0,1,0,0,1,1,0,1,1,1,0,0}},
+	{2026,{2026,2,17},0,{1,0,1,0,0,1,0,0,1,1,1,1}},
+	{2027,{2027,2,6},0,{1,1,0,1,0,0,1,0,0,1,1,0}},
+	{2028,{2028,1,26},5,{1,1,1,0,1,0,1,0,0,1,1,0,0}},
+	{2029,{2029,2,13},0,{1,1,0,1,0,1,0,1,0,0,1,1}},
+	{2030,{2030,2,3},0,{0,1,0,1,1,0,1,0,1,0,1,0}},
+	{2031,{2031,1,23},3,{0,1,1,1,0,1,1,0,1,0,1,0,0}},
+	{2032,{2032,2,11},0,{1,0,0,1,0,1,1,0,1,1,0,1}},
+	{2033,{2033,1,31},11,{0,1,0,0,1,0,1,0,1,1,1,1,0}},
+	{2034,{2034,2,19},0,{0,1,0,0,1,0,1,0,1,1,0,1}}
+};
+const char* ChineseNumbers[] = { 
+	"零", "一", "二", "三", "四", "五", "六", "七", "八", "九",
+	"十","十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九",
+    "二十", "二十一", "二十二", "二十三", "二十四", "二十五", "二十六", "二十七", "二十八", "二十九", 
+	"三十", "三十一", 
+	"二零二五", "二零二六", "二零二七", "二零二八", "二零二九", "二零三零", "二零三一", "二零三二", "二零三三", "二零三四" };
+const char* numberstoChinese(int num) {
+	if (num >= 1 && num <= 30) {
+		return ChineseNumbers[num];
+	}
+	else if (num >= 2025 && num <= 2034) {
+		return ChineseNumbers[30 + 2 + (num - 2025)];
+	}
+}
+#define ANCHOR_COUNT (sizeof(lunardatas)/sizeof(LunarData))
+//生成六十干支纪年表并保存到文件中
+bool generateGZfromFile() {
+	const char* filename = "C:\\ganzhi_data.txt";
+	FILE* file = fopen(filename, "r");
+	if (file != NULL) {
+		for (int i = 0;i < 60;i++) {
+			if (fscanf(file, "%s", GanZhi[i]) != 1) {
+				fclose(file);
+				file = NULL;
+				break;
+			}
+		}
+		if (file != NULL) {
+			fclose(file);
+			return true;
+		}
+	}
+	for (int i = 0;i < 60;i++) {
+		strcpy(GanZhi[i], TianGan[i % 10]);
+		strcat(GanZhi[i], DiZhi[i % 12]);
+	}
+	file = fopen(filename, "w");
+	if (file == NULL) {
+		return true;
+	}
+	for (int i = 0;i < 60;i++) {
+		fprintf(file, "%s\n", GanZhi[i]);
+	}
+	fclose(file);
+	return true;
+}
+
+//判断公历年是否为闰年
+int IsLeapYear(int year) {
+	if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
+		return 1;
+	else
+		return 0;
+}
+//计算从2025年1月1日到目标日期的天数
+int HowManyDays(int a, int b, int c) {
+	int days = 0;
+	for (int year = 2025;year < a;year++) {
+		days += IsLeapYear(year) ? 366 : 365;
+	}
+	int monthdays[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+	if (IsLeapYear(a))
+		monthdays[1] = 29;
+	for (int month = 0;month < b - 1;month++) {
+		days += monthdays[month];
+	}
+	days += c - 1;
+	return days;
+}
+int dataDiff(int y1, int m1, int d1, int y2, int m2, int d2) {
+	int day1 = HowManyDays(y1, m1, d1);
+	int day2 = HowManyDays(y2, m2, d2);
+	return abs(day1 - day2);
+}
+//计算总天数转换公历日期（方便后续农历转公历）
+void HMDtoSolar(int days, int* y, int* m, int* d) {
+	*y = 2025;
+	while (1) {
+		int yeardays = IsLeapYear(*y) ? 366 : 365;
+		if (days < yeardays) break;
+		days -= yeardays;
+		(*y)++;
+	}
+	int monthdays[]= { 31,28,31,30,31,30,31,31,30,31,30,31 };
+	if (IsLeapYear(*y))
+		monthdays[1] = 29;
+	*m = 1;
+	while (*m <= 12) {
+		if (days < monthdays[*m - 1]) break;
+		days -= monthdays[*m - 1];
+		(*m)++;
+	}
+	*d = days + 1;
+}
+//公历转农历
+void SolarToLunar(int sy, int sm, int sd, char* result) {
+	if (sy < 2025 || sy>2034) {
+		printf("仅支持2025年到2034年的转换，望理解 :)");
+		return;
+	}
+	LunarData targetdata = { 0 };
+	bool found = false;
+	//计算公历日期对应的农历年的锚点（正月初一）所在
+	for (int i = 0; i < ANCHOR_COUNT; i++) {
+		int anchoryear = lunardatas[i].SolarFirstDay[0];
+		int anchormonth = lunardatas[i].SolarFirstDay[1];
+		int anchorday = lunardatas[i].SolarFirstDay[2];
+		if ((sy == anchoryear && (sm > anchormonth || (sm == anchormonth && sd >= anchorday))) ||
+			(sy == anchoryear + 1 && sm == 1)) {
+			targetdata = lunardatas[i];
+			found = true;
+			break; 
+		}
+	}
+	//计算目标日期与正月初一的天数差值
+	int anchor_y = targetdata.SolarFirstDay[0];
+	int anchor_m = targetdata.SolarFirstDay[1];
+	int anchor_d = targetdata.SolarFirstDay[2];
+	int diff = HowManyDays(sy, sm, sd) - HowManyDays(anchor_y, anchor_m, anchor_d);
+	int lunarMonth = 1;
+	int lunarDay = 1;
+	int accomulatedDays = 0;//累加已遍历的农历月天数
+	int monthIndex = 0;//遍历monthdays数组的索引
+	while (1) {
+		bool isLeapMonthHere = (monthIndex == targetdata.LeapMonth);
+		int currentmonthdays = targetdata.Days[monthIndex] ? 30 : 29;
+		if (accomulatedDays + currentmonthdays > diff) {
+			lunarDay = diff - accomulatedDays + 1;
+			break;
+		}
+		accomulatedDays += currentmonthdays;
+		monthIndex++;
+		if (!isLeapMonthHere) {
+			lunarMonth++;
+		}
+		if (lunarMonth > 13) break;
+	}
+	//计算目标日期的干支
+	int baseIndex;
+	if (diff < 0) {
+		baseIndex = 40;  // 对应甲辰
+	}
+	else {
+		baseIndex = 41;  // 对应乙巳
+	}
+	int yearDiff = sy - targetdata.LunarYear;  
+	int GZIndex = (baseIndex + yearDiff) % 60;
+	const char* currentGanZhi = GanZhi[GZIndex];
+	if (targetdata.LeapMonth != 0 && lunarMonth == targetdata.LeapMonth) {
+		sprintf(result, "公历：%d-%02d-%02d → 农历：%s年闰%s月%s日",sy, sm, sd, currentGanZhi,numberstoChinese(lunarMonth), numberstoChinese(lunarDay));
+	}
+	else {
+		sprintf(result, "公历：%d-%02d-%02d → 农历：%s年%s月%s日", sy, sm, sd, currentGanZhi, numberstoChinese(lunarMonth), numberstoChinese(lunarDay));
+	}
+}
+//农历转公历
+void LunarToSolar(int ly, int lm, int ld,bool IsLeap, char* result) {
+	if (ly < 2025 || ly>2034) {
+		printf("仅支持2025年到2034年的转换，望理解 :)");
+		return;
+	}
+	//计算目标农历年的锚点
+	LunarData targetdata = { 0 };
+	bool found = false;
+	for (int i = 0;i < ANCHOR_COUNT;i++) {
+		if (lunardatas[i].LunarYear == ly) {
+			targetdata = lunardatas[i];
+			found = true;
+			break;
+		}
+	}
+	int totaldays = 0;
+	int monthIndex = 0;
+	for (int m = 1; m < lm; m++) {
+		if (m == targetdata.LeapMonth && !IsLeap) {
+			monthIndex++; 
+			continue;
+		}
+		if (m == targetdata.LeapMonth && IsLeap) {
+			totaldays += targetdata.Days[monthIndex] ? 30 : 29; 
+			monthIndex++;
+		}
+		totaldays += targetdata.Days[monthIndex] ? 30 : 29;
+		monthIndex++;
+	}
+	totaldays += ld - 1;
+	int anchorTotalDays = HowManyDays(targetdata.SolarFirstDay[0], targetdata.SolarFirstDay[1], targetdata.SolarFirstDay[2]);
+	int targetTotalDays = anchorTotalDays + totaldays;
+	int solarYear, solarMonth, solarDay;
+	HMDtoSolar(targetTotalDays, &solarYear, &solarMonth, &solarDay);
+	int baseIndex;
+	baseIndex = 40 + (ly - 2024);  
+	int GZIndex = baseIndex % 60;  
+	const char* currentGanZhi = GanZhi[GZIndex];
+	if (IsLeap) {
+		if (targetdata.Days[13]){
+      sprintf(result, "农历：%s年闰%s月%s日 → 公历：%d-%02d-%02d", numberstoChinese(ly), numberstoChinese(lm), numberstoChinese(ld), solarYear, solarMonth+1, solarDay);
+    }
+    else {
+      sprintf(result, "农历：%s年闰%s月%s日 → 公历：%d-%02d-%02d", numberstoChinese(ly), numberstoChinese(lm), numberstoChinese(ld), solarYear, solarMonth+1, solarDay-1);
+    }
+  }
+	else {
+		sprintf(result, "农历：%s年%s月%s日 → 公历：%d-%02d-%02d", numberstoChinese(ly), numberstoChinese(lm), numberstoChinese(ld), solarYear, solarMonth, solarDay);
+	}
+}
+int main() {
+	char result[100];
+	int choice;
+	if (!generateGZfromFile()) {
+		return 1;
+	}
+	do {
+		printf("公历农历转换程序：\n");
+		printf("1.公历转农历\n");
+		printf("2.农历转公历\n");
+		printf("3.退出\n");
+		printf("请选择功能（1/2/3）:");
+		scanf_s("%d", &choice);
+		switch (choice) {
+		case 1: {
+			int y, m, d;
+			printf("请输入公历日期（年 月 日）：");
+			scanf_s("%d %d %d", &y, &m, &d);
+			SolarToLunar(y, m, d, result);
+			printf("%s\n\n", result);
+			break;
+			}
+		case 2: {
+			int y, m, d;
+			char leapChoice;
+			bool IsLeap = false;
+			printf("请输入农历日期（年 月 日）：");
+			scanf_s("%d %d %d", &y, &m, &d);
+			getchar();
+			printf("是否为闰月？(y/n):");
+			scanf_s("%c", &leapChoice,1);
+			if (leapChoice == 'y') {
+				IsLeap = true;
+			}
+			LunarToSolar(y, m, d, IsLeap, result);
+			printf("%s\n\n", result);
+			break;
+		}
+		case 3: {
+			printf("程序退出中，感谢您的使用! :)");
+			break;
+		}
+		default:
+			printf("输入错误！\n\n");
+		}
+	} while (choice != 3);
+	return 0;
+}
